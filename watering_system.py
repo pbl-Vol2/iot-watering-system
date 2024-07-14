@@ -11,15 +11,15 @@ Original file is located at
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
-import tensorflow as tf
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-from keras.models import load_model
+from sklearn.metrics import accuracy_score, confusion_matrix
+import joblib
+from sklearn.ensemble import RandomForestClassifier
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -27,71 +27,61 @@ app = Flask(__name__)
 CORS(app)
 
 df = pd.read_csv('TARP.csv')
+
 df = df.drop(['Time', 'Wind gust', 'Wind speed', 'Pressure', 'rainfall', 'N', 'P', 'K', 'ph'], axis =1)
 df = df.sample(n=10000, random_state=42)
+print(df)
 
-# binarizer the label
 encoder = LabelBinarizer()
 df['Status'] = encoder.fit_transform(df['Status'])
+print(df.info())
 
 # handling missing data
 imputer = IterativeImputer(random_state=46, verbose=True)
 data = imputer.fit_transform(df)
 data = pd.DataFrame(data, columns = df.columns)
 
-# data normalization from -1 to 1
+# data normalization from 0 to 1
 scaler = MinMaxScaler((-1,1))
 sdf = scaler.fit_transform(data.iloc[:,:-1], data.iloc[:,-1])
 scaled_df = pd.DataFrame(sdf, columns = data.iloc[:,:-1].columns)
 # tidak mengubah kolom status
 scaled_df['Status'] = data['Status']
 
-# show the data distributions of two label
 plt.hist(scaled_df['Status'])
-plt.show()
 
-# set x and y
 x = scaled_df.iloc[:,:-1]
 y = scaled_df.iloc[:,-1]
 
-# split data to 0.8 of training data and 0.2 of testing data
-x_train,x_test,y_train,y_test = train_test_split(x, y, test_size=0.2, random_state=7)
+x_train,x_test,y_train,y_test=train_test_split(x, y, test_size=0.2, random_state=7)
 
 print('X_train shape : ',  x_train.shape)
 print('y_train shape : ',  y_train.shape)
 print('X_test shape : ',  x_test.shape)
 print('y_test shape : ',  y_test.shape)
 
-# model = tf.keras.Sequential([
-#     tf.keras.layers.Dense(64, input_shape=(5,)),
-#     tf.keras.layers.Dense(16, activation='relu'),
-#     tf.keras.layers.Dense(8, activation='relu'),
-#     tf.keras.layers.Dense(1, activation='sigmoid')
-# ])
-#
-# model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-# model.fit(x_train, y_train, epochs=25, batch_size=32, validation_data=(x_test, y_test))
-# model.save("model_iot.h5")
-#
-# # preprocessing datanya belum bener!
-# data_1 = (22.0, 41.0, 56.0, 24.330292, 57.696575)
-# data_2 = (28.0, 25.0, 48.0, 24.157220, 59.301666)
-#
-# def preprocessing_data(data):
-#   input_data_as_array = np.asarray(data)
-#   input_data_reshaped = input_data_as_array.reshape(1,-1)
-#   std_data = scaler.transform(input_data_reshaped)
-#   pred = model.predict(std_data)
-#   if pred > 0.5:
-#       print("ON")
-#   else:
-#       print("OFF")
-#
-# preprocessing_data(data_1)
-# preprocessing_data(data_2)
+# define the model
+model_RF = RandomForestClassifier()
+model_RF.fit(x_train, y_train)
+y_pred = model_RF.predict(x_test)
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Accuracy: {accuracy:.2f}')
+print(f'Confusion Matrix: \n {confusion_matrix(y_test, y_pred)}')
 
-model = load_model("model_iot.h5")
+data_1 = (22.0, 41.0, 56.0, 24.330292, 57.696575)
+def predict_status(data):
+    input_data_as_array = np.asarray(data)
+    input_data_reshaped = input_data_as_array.reshape(1,-1)
+    std_data = scaler.transform(input_data_reshaped)
+    pred = model_RF.predict(std_data)
+    status = "ON" if pred > 0.5 else "OFF"
+    print(status)
 
+predict_status(data_1)
+
+joblib.dump(model_RF, "model.sav")
+
+model = joblib.load('model.sav')
 @app.route("/status", methods= ["POST"])
 def status():
     user_input = request.get_json(force=True)
