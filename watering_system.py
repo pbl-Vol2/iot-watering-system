@@ -20,9 +20,11 @@ from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from keras.models import load_model
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
-# app = Flask(__name__)
-# CORS(app)
+app = Flask(__name__)
+CORS(app)
 
 df = pd.read_csv('TARP.csv')
 df = df.drop(['Time', 'Wind gust', 'Wind speed', 'Pressure', 'rainfall', 'N', 'P', 'K', 'ph'], axis =1)
