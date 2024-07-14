@@ -11,24 +11,26 @@ Original file is located at
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import tensorflow as tf
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import MinMaxScaler
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from sklearn.model_selection import train_test_split
 from keras.models import load_model
 
-app = Flask(__name__)
-CORS(app)
+# app = Flask(__name__)
+# CORS(app)
 
 df = pd.read_csv('TARP.csv')
-df = df.drop(['Time', 'Wind gust', 'Wind speed', 'Pressure', 'rainfall', 'N', 'P', 'K'], axis =1)
+df = df.drop(['Time', 'Wind gust', 'Wind speed', 'Pressure', 'rainfall', 'N', 'P', 'K', 'ph'], axis =1)
 df = df.sample(n=10000, random_state=42)
 
+# binarizer the label
 encoder = LabelBinarizer()
 df['Status'] = encoder.fit_transform(df['Status'])
-df.info()
 
 # handling missing data
 imputer = IterativeImputer(random_state=46, verbose=True)
@@ -42,35 +44,36 @@ scaled_df = pd.DataFrame(sdf, columns = data.iloc[:,:-1].columns)
 # tidak mengubah kolom status
 scaled_df['Status'] = data['Status']
 
-# plt.hist(scaled_df['Status'])
-# plt.show()
-#
-# x = scaled_df.iloc[:,:-1]
-# y = scaled_df.iloc[:,-1]
-#
-# x_train,x_test,y_train,y_test = train_test_split(x, y, test_size=0.2, random_state=7)
-#
-# print('X_train shape : ',  x_train.shape)
-# print('y_train shape : ',  y_train.shape)
-# print('X_test shape : ',  x_test.shape)
-# print('y_test shape : ',  y_test.shape)
+# show the data distributions of two label
+plt.hist(scaled_df['Status'])
+plt.show()
+
+# set x and y
+x = scaled_df.iloc[:,:-1]
+y = scaled_df.iloc[:,-1]
+
+# split data to 0.8 of training data and 0.2 of testing data
+x_train,x_test,y_train,y_test = train_test_split(x, y, test_size=0.2, random_state=7)
+
+print('X_train shape : ',  x_train.shape)
+print('y_train shape : ',  y_train.shape)
+print('X_test shape : ',  x_test.shape)
+print('y_test shape : ',  y_test.shape)
 
 # model = tf.keras.Sequential([
-#     tf.keras.layers.Dense(64, input_shape=(6,)),
+#     tf.keras.layers.Dense(64, input_shape=(5,)),
 #     tf.keras.layers.Dense(16, activation='relu'),
 #     tf.keras.layers.Dense(8, activation='relu'),
 #     tf.keras.layers.Dense(1, activation='sigmoid')
 # ])
 #
 # model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-#
-# history = model.fit(x_train, y_train, epochs=20, batch_size=32, validation_data=(x_test, y_test))
-#
+# model.fit(x_train, y_train, epochs=25, batch_size=32, validation_data=(x_test, y_test))
 # model.save("model_iot.h5")
-
+#
 # # preprocessing datanya belum bener!
-# data_1 = (22.0, 41.0, 56.0, 24.330292, 57.696575, 6.501160)
-# data_2 = (28.0, 25.0, 48.0, 24.157220, 59.301666, 6.473901)
+# data_1 = (22.0, 41.0, 56.0, 24.330292, 57.696575)
+# data_2 = (28.0, 25.0, 48.0, 24.157220, 59.301666)
 #
 # def preprocessing_data(data):
 #   input_data_as_array = np.asarray(data)
@@ -87,8 +90,8 @@ scaled_df['Status'] = data['Status']
 
 model = load_model("model_iot.h5")
 
-@app.route("/predict", methods= ["POST"])
-def preprocessing_data():
+@app.route("/status", methods= ["POST"])
+def status():
     user_input = request.get_json(force=True)
     data = user_input.get('data')
     # Convert list to tuple
