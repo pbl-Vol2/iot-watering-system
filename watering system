@@ -1,0 +1,173 @@
+#define BLYNK_TEMPLATE_ID "TMPL6BqoXnZVy"
+#define BLYNK_TEMPLATE_NAME "plant watering system"
+#define BLYNK_AUTH_TOKEN "f94YP8mvXDX3Xw2lm6seiRQf4O0AUXAG"
+
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <DHT.h> // Include DHT library for DHT22 sensor
+#include <HTTPClient.h>
+
+#define sensor 33
+#define relay 4
+#define DHTPIN 5        // Pin where the DHT22 is connected
+#define DHTTYPE DHT22   // Define the type of DHT sensor
+
+// Initialize the LCD display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+DHT dht(DHTPIN, DHTTYPE); // Initialize the DHT sensor
+
+BlynkTimer timer;
+
+// Enter your WIFI SSID and password
+char ssid[] = "hai";
+char pass[] = "123456789";
+
+void setup() {
+  // Debug console
+  Serial.begin(115200);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  lcd.init();
+  lcd.backlight();
+  pinMode(relay, OUTPUT);
+  digitalWrite(relay, HIGH);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Welcome!"); // Centered on 16x2 display
+
+  // Display system loading message
+  lcd.setCursor(0, 1);
+  lcd.print("System Loading");
+  for (int a = 0; a <= 15; a++) {
+    lcd.setCursor(a, 1);
+    lcd.print(".");
+    delay(200);
+  }
+  lcd.clear();
+
+  dht.begin(); // Initialize the DHT sensor
+}
+
+// Get the soil moisture values
+void soilMoisture() {
+  int value = analogRead(sensor);
+  float moisturePercentage = map(value, 0, 4095, 0, 100); // Map the analog value to percentage
+  Serial.print("Moisture analog :");
+  Serial.println(value);
+  lcd.setCursor(0, 0);
+  lcd.print("Moisture :");
+  lcd.print(int(moisturePercentage)); // Cast to int to remove decimal places
+  lcd.print("% ");
+
+  // Activate water pump if moisture < 20%
+  // if (moisturePercentage < 20.0) {
+  //   digitalWrite(relay, LOW); // Activate water pump
+  //   lcd.setCursor(0, 1);
+  //   lcd.print("Motor is ON ");
+  // } else {
+  //   digitalWrite(relay, HIGH); // Turn off water pump
+  //   lcd.setCursor(0, 1);
+  //   lcd.print("Motor is OFF ");
+  // }
+}
+
+
+void sendToBlynk() {
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+  int moisture = analogRead(sensor);
+
+  Blynk.virtualWrite(V0, moisture); // Send moisture raw value to Blynk
+  Blynk.virtualWrite(V1, humidity); // Send humidity to Blynk
+  Blynk.virtualWrite(V2, temperature); // Send temperature to Blynk
+}
+
+// Get the DHT22 sensor values
+void displayDHT22() {
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  // Update LCD with temperature and humidity
+  lcd.setCursor(0, 1);
+  lcd.print("Temp:");
+  lcd.print(temperature);
+  lcd.print("C ");
+  lcd.setCursor(9, 1);
+  lcd.print("Hum:");
+  lcd.print(humidity);
+  lcd.print("% ");
+}
+
+String sendDataToAPI() {
+  WiFiClient client;
+
+  HTTPClient http;
+  http.begin(client, "http://35.223.246.179:5001/status"); // Specify your API endpoint
+
+  http.addHeader("Content-Type", "application/json");
+
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+  int moisture = analogRead(sensor);
+  float moisturePercentage = map(moisture, 0, 4095, 0, 100); // Map the analog value to percentage
+
+  // Create JSON payload
+  String jsonPayload = "{\"data\":[" +
+                       String(moisturePercentage) + "," +
+                       String(temperature) + "," +
+                       String(humidity) +
+                       "]}";
+
+  // Send HTTP POST request
+  int httpResponseCode = http.POST(jsonPayload);
+
+  if (httpResponseCode > 0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    String response = http.getString();
+    Serial.println(response);
+    return "ON";
+  } else {
+    Serial.print("Error on HTTP request: ");
+    Serial.println(httpResponseCode);
+    return "OFF";
+  }
+
+  http.end();
+  return "OFF";
+}
+
+// Get the button value
+BLYNK_WRITE(V3) {
+  bool Relay = param.asInt();
+  if (Relay == 1) {
+    lcd.setCursor(0, 1);
+    String status = sendDataToAPI();
+    if (status == "OFF") {
+      digitalWrite(relay, LOW);
+      lcd.print("SIRAM");
+    } else {
+      digitalWrite(relay, HIGH);
+      lcd.print("GAJADI SIRAM");
+    }
+  } else {
+    digitalWrite(relay, HIGH);
+    lcd.setCursor(0, 1);
+    lcd.print("Motor is OFF");
+  }
+}
+
+void loop() {
+  soilMoisture();
+  displayDHT22();
+  Blynk.run(); // Run the Blynk library
+  sendToBlynk();
+  delay(200);
+}
